@@ -46,6 +46,18 @@ class EmailTemplatePreviewServiceTest extends TestCase
         $this->assertStringNotContainsString('{{', $preview['text']);
     }
 
+    public function test_password_reset_preview_includes_link_and_expiration_in_both_formats(): void
+    {
+        $definition = app(EmailTemplateSourceService::class)->definitions()['authentication.reset-password|en-us'];
+        $preview = app(EmailTemplatePreviewService::class)->render($definition);
+
+        foreach (['html', 'text'] as $format) {
+            $this->assertStringContainsString('https://example.test/reset-password/sample-token?email=jordan%40example.test', $preview[$format]);
+            $this->assertStringContainsString(config('auth.passwords.users.expire').' minutes', $preview[$format]);
+            $this->assertStringContainsString('Jordan Lee', $preview[$format]);
+        }
+    }
+
     public function test_every_default_template_can_render_a_preview(): void
     {
         $previewer = app(EmailTemplatePreviewService::class);
