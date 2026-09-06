@@ -10,6 +10,7 @@ use App\Actions\Fortify\UpdateUserProfileInformation;
 use App\Mail\ResetPasswordMail;
 use App\Models\DefaultSettings;
 use App\Services\LdapUserAuthenticator;
+use App\Support\Localization\LocaleRegistry;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -46,22 +47,25 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
 
-        // Laravel's default ResetPassword notification renders its own hardcoded
-        // MailMessage, bypassing the app's branded email_templates system (no
-        // header/footer, no admin-editable copy). Route it through the same
-        // BaseMailable-based flow every other transactional email uses.
+        // Use editable email templates while retaining Laravel's reset-token flow.
         ResetPassword::toMailUsing(function ($notifiable, string $token) {
+            $domainUuid = $notifiable->domain_uuid;
+            $email = $notifiable->getEmailForPasswordReset();
             $url = url(route('password.reset', [
                 'token' => $token,
-                'email' => $notifiable->getEmailForPasswordReset(),
+                'email' => $email,
             ], false));
 
-            return new ResetPasswordMail([
-                'email' => $notifiable->getEmailForPasswordReset(),
+            return (new ResetPasswordMail([
+                'domain_uuid' => $domainUuid,
+                'language' => app(LocaleRegistry::class)->resolve(
+                    $domainUuid ? get_domain_setting('language', $domainUuid) : null
+                ),
+                'email' => $email,
                 'name' => $notifiable->name_formatted ?? null,
                 'url' => $url,
                 'expire_minutes' => config('auth.passwords.'.config('auth.defaults.passwords').'.expire'),
-            ]);
+            ]))->to($email);
         });
 
         Fortify::authenticateUsing(function (Request $request) {
